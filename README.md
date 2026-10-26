@@ -38,8 +38,8 @@
 ## 🛠️ টেকনোলজি স্ট্যাক (Tech Stack)
 
 - **Frontend:** React 19 + TypeScript + Vite
-- **Rendering:** HTML5 2D Canvas Engine (60 FPS Procedural Dhaka Vector Graphics)
-- **Audio:** Web Audio API (100% synthesized sound effects)
+- **3D Graphics Engine:** Three.js (WebGL Realistic 3D Third-Person Perspective, Dynamic Shadows, Atmospheric Fog, PBR Materials)
+- **Audio:** Web Audio API (100% synthesized authentic Dhaka sound effects)
 - **Icons & Effects:** Lucide React & Canvas-Confetti
 - **Styling:** Vanilla Responsive CSS System
 

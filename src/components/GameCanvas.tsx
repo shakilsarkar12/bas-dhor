@@ -3,14 +3,13 @@ import type {
   Player,
   Obstacle,
   Collectible,
-  Particle,
   SpeechBubble,
   BusOption,
   StageConfig,
   ScoreRecord,
   ObstacleType
 } from '../types/game';
-import { CanvasRenderer } from '../services/canvasRenderer';
+import { ThreeGameScene } from '../services/threeScene';
 import { STAGES, FUNNY_QUOTES, generateRunResult } from '../services/stageConfig';
 import { sounds } from '../services/sound';
 import { StorageService } from '../services/storage';
@@ -27,8 +26,10 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const threeContainerRef = useRef<HTMLDivElement | null>(null);
+  const speechCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const threeSceneRef = useRef<ThreeGameScene | null>(null);
 
   // High-level game states
   const [gameState, setGameState] = useState<
@@ -71,7 +72,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
   // State refs for animation loop
   const obstaclesRef = useRef<Obstacle[]>([]);
   const collectiblesRef = useRef<Collectible[]>([]);
-  const particlesRef = useRef<Particle[]>([]);
   const speechBubblesRef = useRef<SpeechBubble[]>([]);
   const busOptionsRef = useRef<BusOption[] | null>(null);
 
@@ -87,30 +87,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
   });
 
   const targetDestination = 'মতিঝিল (অফিস)';
-  const rendererRef = useRef<CanvasRenderer | null>(null);
   const lastTimeRef = useRef<number>(0);
-  const nextObstacleDistanceRef = useRef<number>(30);
-  const nextCollectibleDistanceRef = useRef<number>(20);
+  const nextObstacleDistanceRef = useRef<number>(25);
+  const nextCollectibleDistanceRef = useRef<number>(15);
   const busStopTriggeredRef = useRef<boolean>(false);
   const interiorMinigameTriggeredRef = useRef<boolean>(false);
 
   // Helper to trigger floating Bengali speech bubbles
   const addSpeechBubble = useCallback((text: string, sender: 'PLAYER' | 'HELPER' = 'PLAYER') => {
-    const p = playerRef.current;
     speechBubblesRef.current.push({
       id: Math.random(),
       text,
       sender,
-      x: p.x,
-      y: p.y - 45,
-      life: 2.5,
-      maxLife: 2.5
+      x: window.innerWidth / 2,
+      y: window.innerHeight * 0.42,
+      life: 2.8,
+      maxLife: 2.8
     });
   }, []);
 
   // Screen shake on collision
   const triggerScreenShake = () => {
     setScreenShake(true);
+    threeSceneRef.current?.triggerImpactShake();
     setTimeout(() => setScreenShake(false), 300);
   };
 
@@ -135,7 +134,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     const p = playerRef.current;
     if (!p.isJumping) {
       p.isJumping = true;
-      p.jumpVy = 620; // Upward velocity
+      p.jumpVy = 480; // Upward velocity
       p.state = 'JUMPING';
       sounds.playJump();
     }
@@ -145,7 +144,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     const p = playerRef.current;
     if (!p.isSliding) {
       p.isSliding = true;
-      p.slideTimer = 0.65; // Slide duration
+      p.slideTimer = 0.7; // Slide duration
       p.state = 'SLIDING';
       sounds.playSlide();
     }
@@ -193,11 +192,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
     if (Math.max(absX, absY) > 30) {
       if (absX > absY) {
-        // Horizontal swipe
         if (dx > 0) handleRight();
         else handleLeft();
       } else {
-        // Vertical swipe
         if (dy < 0) handleJump();
         else handleSlide();
       }
@@ -207,12 +204,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
   // Restart function
   const restartGame = useCallback(() => {
-    const canvas = canvasRef.current;
-    const laneW = canvas ? canvas.width / 3 : 130;
-
     playerRef.current = {
-      x: laneW * 1.5,
-      y: canvas ? canvas.height * 0.78 : 500,
+      x: 0,
+      y: 0,
       lane: 1,
       targetLane: 1,
       jumpY: 0,
@@ -234,7 +228,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
     obstaclesRef.current = [];
     collectiblesRef.current = [];
-    particlesRef.current = [];
     speechBubblesRef.current = [];
     busOptionsRef.current = null;
 
@@ -269,34 +262,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     addSpeechBubble('দেরি হয়ে গেছে, বস! এবার দৌড়াও!');
   }, [addSpeechBubble]);
 
-  // Canvas Resizing & Renderer Setup
+  // Mount Three.js 3D Scene
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
+    const container = threeContainerRef.current;
+    if (!container) return;
 
-    const resize = () => {
+    const threeScene = new ThreeGameScene(container);
+    threeSceneRef.current = threeScene;
+
+    const handleResize = () => {
       const rect = container.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      threeScene.resize(rect.width, rect.height);
 
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-        rendererRef.current = new CanvasRenderer(ctx);
-        rendererRef.current.resize(rect.width, rect.height);
+      const canvas = speechCanvasRef.current;
+      if (canvas) {
+        const dpr = Math.min(window.devicePixelRatio, 2);
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
       }
-
-      // Position player at 78% height in center lane
-      const laneW = rect.width / 3;
-      playerRef.current.x = laneW * 1.5;
-      playerRef.current.y = rect.height * 0.78;
     };
 
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      threeScene.destroy();
+      threeSceneRef.current = null;
+    };
   }, []);
 
   // Main 60FPS Game Loop
@@ -305,14 +298,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
     const gameLoop = (time: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = time;
-      const dt = Math.min((time - lastTimeRef.current) / 1000, 0.05); // Cap dt
+      const dt = Math.min((time - lastTimeRef.current) / 1000, 0.05);
       lastTimeRef.current = time;
 
       if (gameState === 'RUNNING') {
         updateGame(dt);
       }
 
-      renderGame();
+      renderGame(dt);
       animationFrameId = requestAnimationFrame(gameLoop);
     };
 
@@ -322,13 +315,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
   // Logic Updates
   const updateGame = (dt: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = containerRef.current?.getBoundingClientRect();
-    const w = rect?.width || 400;
-    const h = rect?.height || 650;
-    const laneW = w / 3;
-
     const p = playerRef.current;
     const stats = statsRef.current;
 
@@ -345,52 +331,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       stats.stageReached = Math.max(stats.stageReached, stageId);
       sounds.playVictory();
       addSpeechBubble(`${STAGES[stageId].name}!`, 'HELPER');
-      confetti({ particleCount: 35, spread: 60, origin: { y: 0.2 } });
+      confetti({ particleCount: 40, spread: 60, origin: { y: 0.2 } });
     }
 
     // 2. Base Speed and Distance scaling
-    const baseSpeed = 280 * currentStage.speedMultiplier * (p.hasTeaBoost ? 1.4 : 1.0);
+    const baseSpeed = 260 * currentStage.speedMultiplier * (p.hasTeaBoost ? 1.4 : 1.0);
     const speed = baseSpeed;
-    const metersCovered = (speed * dt) / 12; // 12 pixels = ~1 meter
+    const metersCovered = (speed * dt) / 10;
     stats.distance += metersCovered;
     stats.score += Math.round(metersCovered * 10 * (1 + stats.combo * 0.1));
 
     setDistance(Math.floor(stats.distance));
     setScore(stats.score);
 
-    // 3. Smooth Lane Interpolation (Lerping)
-    const targetX = p.targetLane * laneW + laneW / 2;
-    p.x += (targetX - p.x) * Math.min(dt * 14, 1);
-    p.lane = p.targetLane;
-
-    // 4. Jump Physics
+    // 3. Jump Physics
     if (p.isJumping) {
       p.jumpY += p.jumpVy * dt;
-      p.jumpVy -= 1600 * dt; // Gravity
+      p.jumpVy -= 1400 * dt; // Gravity
       if (p.jumpY <= 0) {
         p.jumpY = 0;
         p.jumpVy = 0;
         p.isJumping = false;
         p.state = p.isSliding ? 'SLIDING' : 'RUNNING';
-
-        // Spawn dust/mud particles on landing
-        for (let i = 0; i < 5; i++) {
-          particlesRef.current.push({
-            x: p.x + (Math.random() - 0.5) * 20,
-            y: p.y + 15,
-            vx: (Math.random() - 0.5) * 80,
-            vy: (Math.random() - 0.5) * 40,
-            color: p.mudStained ? '#5d4037' : '#95a5a6',
-            size: 3 + Math.random() * 3,
-            life: 0.35,
-            maxLife: 0.35,
-            type: 'MUD'
-          });
-        }
       }
     }
 
-    // 5. Slide Timer
+    // 4. Slide Timer
     if (p.isSliding) {
       p.slideTimer -= dt;
       if (p.slideTimer <= 0) {
@@ -399,7 +365,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       }
     }
 
-    // 6. Powerup Timers
+    // 5. Powerup Timers
     if (p.hasTeaBoost) {
       p.teaBoostTimer -= dt;
       if (p.teaBoostTimer <= 0) p.hasTeaBoost = false;
@@ -413,47 +379,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       if (p.invincibleTimer <= 0) p.isInvincible = false;
     }
 
-    // 7. Check Stage 5 Bus Interior Minigame Trigger
+    // 6. Check Stage 5 Bus Interior Minigame Trigger
     if (stageId === 5 && !interiorMinigameTriggeredRef.current) {
       interiorMinigameTriggeredRef.current = true;
       setGameState('BUS_INTERIOR');
       return;
     }
 
-    // 8. Bus Stop Choice Event (Level 3 or every 700m)
+    // 7. Bus Stop Choice Event (Level 3 or every 700m)
     if (stageId === 3 && !busStopTriggeredRef.current && stats.distance >= 700) {
       busStopTriggeredRef.current = true;
       triggerBusStopEvent();
     }
 
-    // 9. Spawn Obstacles
+    // 8. Spawn Obstacles
     if (stats.distance >= nextObstacleDistanceRef.current && !busOptionsRef.current) {
-      spawnObstacle(laneW);
-      nextObstacleDistanceRef.current = stats.distance + (18 + Math.random() * 22) / currentStage.speedMultiplier;
+      spawnObstacle();
+      nextObstacleDistanceRef.current = stats.distance + (20 + Math.random() * 22) / currentStage.speedMultiplier;
     }
 
-    // 10. Spawn Collectibles
+    // 9. Spawn Collectibles
     if (stats.distance >= nextCollectibleDistanceRef.current) {
       spawnCollectible();
       nextCollectibleDistanceRef.current = stats.distance + (12 + Math.random() * 18);
     }
 
-    // 11. Move Obstacles & Handle Collisions
+    // 10. Move Obstacles & Handle Collisions
     const currentObstacles = obstaclesRef.current;
     for (let i = currentObstacles.length - 1; i >= 0; i--) {
       const obs = currentObstacles[i];
       obs.y += speed * dt;
 
-      // Check collision
-      const obsX = obs.lane * laneW + laneW / 2;
-      const dx = Math.abs(p.x - obsX);
-      const dy = Math.abs(p.y - obs.y);
+      // Check collision with player (player position around y = 450)
+      const dy = Math.abs(obs.y - 450);
+      const isSameLane = obs.lane === p.targetLane;
 
-      if (!obs.collided && dx < laneW * 0.45 && dy < 35) {
+      if (!obs.collided && isSameLane && dy < 35) {
         let avoids = false;
 
-        // Can jump over POTHOLE, MUD, BRICKS
-        if (p.isJumping && p.jumpY > 35 && (obs.type === 'POTHOLE' || obs.type === 'MUD' || obs.type === 'BRICKS')) {
+        // Can jump over POTHOLE, MUD
+        if (p.isJumping && p.jumpY > 25 && (obs.type === 'POTHOLE' || obs.type === 'MUD')) {
           avoids = true;
         }
 
@@ -472,85 +437,58 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
             sounds.playCoin(stats.combo);
           }
         } else {
-          // Actual Collision
           obs.collided = true;
           handleCollision(obs);
         }
       }
 
       // Cleanup passed obstacles
-      if (obs.y > h + 100) {
+      if (obs.y > 600) {
         currentObstacles.splice(i, 1);
       }
     }
 
-    // 12. Move Collectibles & Handle Pickups
+    // 11. Move Collectibles & Handle Pickups
     const currentCollectibles = collectiblesRef.current;
     for (let i = currentCollectibles.length - 1; i >= 0; i--) {
       const col = currentCollectibles[i];
       col.y += speed * dt;
 
-      const colX = col.lane * laneW + laneW / 2;
-      const dx = Math.abs(p.x - colX);
-      const dy = Math.abs(p.y - col.y);
+      const dy = Math.abs(col.y - 450);
+      const isSameLane = col.lane === p.targetLane;
 
-      if (!col.collected && dx < laneW * 0.4 && dy < 40) {
+      if (!col.collected && isSameLane && dy < 40) {
         col.collected = true;
         handleCollect(col);
       }
 
-      if (col.y > h + 50) {
+      if (col.y > 600) {
         currentCollectibles.splice(i, 1);
       }
     }
 
-    // 13. Update Bus Stop Decision (if active)
-    if (busOptionsRef.current) {
-      handleBusStopDecisionCheck(p);
-    }
-
-    // 14. Update Particles
-    const particles = particlesRef.current;
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const pt = particles[i];
-      pt.x += pt.vx * dt;
-      pt.y += pt.vy * dt;
-      pt.life -= dt;
-      if (pt.life <= 0) particles.splice(i, 1);
-    }
-
-    // 15. Update Speech Bubbles
+    // 12. Update Speech Bubbles
     const bubbles = speechBubblesRef.current;
     for (let i = bubbles.length - 1; i >= 0; i--) {
       const b = bubbles[i];
       b.life -= dt;
-      b.x = p.x;
-      b.y = p.y - 45 - p.jumpY;
       if (b.life <= 0) bubbles.splice(i, 1);
     }
   };
 
   // Spawn Obstacle
-  const spawnObstacle = (laneW: number) => {
+  const spawnObstacle = () => {
     const lane = Math.floor(Math.random() * 3);
     const availableTypes = currentStage.obstacleTypes;
     const type: ObstacleType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-
-    let width = laneW * 0.75;
-    let height = 45;
-
-    if (type === 'RICKSHAW') height = 55;
-    if (type === 'CNG') height = 65;
-    if (type === 'SLOW_BUS') height = 95;
-    if (type === 'POTHOLE' || type === 'MUD') height = 30;
 
     obstaclesRef.current.push({
       id: Math.random(),
       type,
       lane,
-      y: -height - 20,
-      width,
-      height,
+      y: 0,
+      width: 1.5,
+      height: 1.5,
       speed: 0,
       passed: false,
       collided: false
@@ -570,7 +508,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       id: Math.random(),
       type,
       lane,
-      y: -30,
+      y: 0,
       collected: false,
       value: type === 'COIN' ? 1 : 5
     });
@@ -580,9 +518,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
   const handleCollision = (obs: Obstacle) => {
     const p = playerRef.current;
     const stats = statsRef.current;
-    stats.combo = 0; // Reset combo
+    stats.combo = 0;
 
-    // 1. If Tea Boost: smashes obstacle!
     if (p.hasTeaBoost) {
       sounds.playCrash();
       triggerScreenShake();
@@ -590,7 +527,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       return;
     }
 
-    // 2. If Umbrella Shield: breaks umbrella but saves life!
     if (p.hasUmbrella) {
       p.hasUmbrella = false;
       p.isInvincible = true;
@@ -601,10 +537,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       return;
     }
 
-    // 3. If currently Invincible: ignore
     if (p.isInvincible) return;
 
-    // 4. Mud slip
     if (obs.type === 'MUD') {
       stats.slips += 1;
       p.mudStained = true;
@@ -616,15 +550,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       return;
     }
 
-    // 5. Heavy collision (Rickshaw, CNG, Bus, Bamboo)
     sounds.playCrash();
     triggerScreenShake();
-    const crashQuote = 'আহারে! ধাক্কা লেগে গেল!';
-    addSpeechBubble(crashQuote, 'PLAYER');
+    addSpeechBubble('আহারে! ধাক্কা লেগে গেল!', 'PLAYER');
     damagePlayer();
   };
 
-  // Damage Player
   const damagePlayer = () => {
     const p = playerRef.current;
     p.lives -= 1;
@@ -636,7 +567,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     }
   };
 
-  // Collectible Pickup Logic
   const handleCollect = (col: Collectible) => {
     const p = playerRef.current;
     const stats = statsRef.current;
@@ -661,11 +591,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     }
   };
 
-  // Bus Stop Selection Event (Level 3)
   const triggerBusStopEvent = () => {
-    // 3 buses across lanes
     const correctLane = Math.floor(Math.random() * 3);
-    const wrongDestinations = ['গাজীপুর', 'কুমিল্লা', 'মিরপুর', 'যাত্রাবাড়ী'];
+    const wrongDestinations = ['গাজীপুর', 'কুমিল্লা', 'মিরপুর'];
 
     const options: BusOption[] = [0, 1, 2].map((lane) => {
       const isCorrect = lane === correctLane;
@@ -683,37 +611,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
 
     busOptionsRef.current = options;
     sounds.playBusHorn();
-    addSpeechBubble('সামনে ৩টি বাস! মতিঝিলের বাসে উঠুন!', 'HELPER');
+    addSpeechBubble('সামনে ৩টি ৩ডি বাস! মতিঝিলের বাসে উঠুন!', 'HELPER');
+
+    setTimeout(() => {
+      const p = playerRef.current;
+      const chosen = options.find((b) => b.lane === p.targetLane);
+      if (chosen && chosen.isCorrect) {
+        statsRef.current.busesCaught += 1;
+        statsRef.current.score += 2000;
+        sounds.playVictory();
+        confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
+        addSpeechBubble('মতিঝিল ডাইরেক্ট! সাবাশ বস!', 'HELPER');
+      } else {
+        statsRef.current.wrongBuses += 1;
+        sounds.playCrash();
+        triggerScreenShake();
+        addSpeechBubble('হায় হায়! ভুল বাসে উঠে গেছেন!', 'HELPER');
+        damagePlayer();
+      }
+      busOptionsRef.current = null;
+    }, 4500);
   };
 
-  const handleBusStopDecisionCheck = (player: Player) => {
-    const options = busOptionsRef.current;
-    if (!options) return;
-
-    // After 4.5 seconds, evaluate the player's chosen lane
-    // Or when player is aligned with the buses
-    const chosenBus = options.find((b) => b.lane === player.targetLane);
-    if (!chosenBus) return;
-
-    // Award result
-    if (chosenBus.isCorrect) {
-      statsRef.current.busesCaught += 1;
-      statsRef.current.score += 2000;
-      sounds.playVictory();
-      confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
-      addSpeechBubble('মতিঝিল ডাইরেক্ট! সাবাশ বস!', 'HELPER');
-    } else {
-      statsRef.current.wrongBuses += 1;
-      sounds.playCrash();
-      triggerScreenShake();
-      addSpeechBubble(`হায় হায়! ${chosenBus.destination} চলে যাচ্ছেন!`, 'HELPER');
-      damagePlayer();
-    }
-
-    busOptionsRef.current = null;
-  };
-
-  // Bus Interior minigame completed callback
   const handleInteriorComplete = (success: boolean) => {
     if (success) {
       statsRef.current.score += 2500;
@@ -727,7 +646,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
     }
   };
 
-  // Game Over
   const handleGameOver = () => {
     setGameState('GAME_OVER');
     sounds.playGameOver();
@@ -756,31 +674,85 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       comment
     });
 
-    // Update Daily Challenge progress
     StorageService.updateDailyChallenge(stats.distance, stats.coins, stats.busesCaught);
 
     setLastRecord(record);
     setIsNewBest(isNewBest);
   };
 
-  // Render on Canvas
-  const renderGame = () => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
+  // Render 3D and 2D speech bubble overlay
+  const renderGame = (dt: number) => {
+    if (threeSceneRef.current) {
+      threeSceneRef.current.update(
+        playerRef.current,
+        obstaclesRef.current,
+        collectiblesRef.current,
+        busOptionsRef.current,
+        currentStage,
+        280 * currentStage.speedMultiplier,
+        dt
+      );
+    }
 
-    const isRain = currentStage.id === 4;
-    renderer.render(
-      playerRef.current,
-      obstaclesRef.current,
-      collectiblesRef.current,
-      particlesRef.current,
-      speechBubblesRef.current,
-      busOptionsRef.current,
-      currentStage,
-      statsRef.current.distance,
-      280 * currentStage.speedMultiplier,
-      isRain
-    );
+    // Draw comic speech bubbles on 2D overlay
+    const canvas = speechCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = Math.min(window.devicePixelRatio, 2);
+
+    speechBubblesRef.current.forEach((b) => {
+      const alpha = Math.min(1, b.life / 0.5);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.globalAlpha = alpha;
+
+      ctx.font = 'bold 15px "Hind Siliguri", sans-serif';
+      const textMetrics = ctx.measureText(b.text);
+      const textW = textMetrics.width;
+      const padX = 16;
+      const padY = 9;
+      const bw = textW + padX * 2;
+      const bh = 32 + padY;
+
+      const screenW = canvas.width / dpr;
+      const bx = screenW / 2 - bw / 2;
+      const by = 130;
+
+      // Bubble drop shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.roundRect(bx + 3, by + 3, bw, bh, 10);
+      ctx.fill();
+
+      // Bubble Body
+      ctx.fillStyle = b.sender === 'HELPER' ? '#f39c12' : '#ffffff';
+      ctx.strokeStyle = '#2c3e50';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tail
+      ctx.beginPath();
+      ctx.moveTo(bx + bw / 2 - 8, by + bh);
+      ctx.lineTo(bx + bw / 2, by + bh + 10);
+      ctx.lineTo(bx + bw / 2 + 8, by + bh);
+      ctx.fillStyle = b.sender === 'HELPER' ? '#f39c12' : '#ffffff';
+      ctx.fill();
+      ctx.stroke();
+
+      // Text
+      ctx.fillStyle = b.sender === 'HELPER' ? '#ffffff' : '#1e272e';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(b.text, bx + bw / 2, by + bh / 2);
+
+      ctx.restore();
+    });
   };
 
   const handleToggleSound = () => {
@@ -797,6 +769,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
+      {/* 3D WebGL Three.js Container */}
+      <div
+        ref={threeContainerRef}
+        className="absolute inset-0 w-full h-full cursor-pointer"
+        onClick={() => {
+          if (gameState === 'RUNNING') handleJump();
+        }}
+      />
+
+      {/* 2D Comic Speech Bubble Canvas Overlay */}
+      <canvas
+        ref={speechCanvasRef}
+        className="absolute inset-0 w-full h-full pointer-events-none z-20"
+      />
+
       {/* HUD Bar */}
       <GameHUD
         score={score}
@@ -808,15 +795,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onHome, onHowToPlay }) =
         isMuted={isMuted}
         onToggleSound={handleToggleSound}
         onPause={() => setGameState('PAUSED')}
-      />
-
-      {/* Main Game Canvas */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full cursor-pointer"
-        onClick={() => {
-          if (gameState === 'RUNNING') handleJump();
-        }}
       />
 
       {/* Mobile Virtual Controls */}
