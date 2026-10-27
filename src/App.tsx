@@ -54,8 +54,14 @@ export const App: React.FC = () => {
 
   return (
     <main className="w-full h-full min-h-screen bg-slate-950 flex justify-center items-center relative overflow-hidden">
-      {/* Mobile-first Arcade Cabinet Container */}
-      <div className="w-full max-w-[480px] h-full min-h-screen sm:border-x-2 sm:border-amber-500/30 sm:shadow-2xl flex flex-col relative overflow-hidden bg-slate-950">
+      {/* Responsive Immersive Container */}
+      <div
+        className={`w-full h-full min-h-screen flex flex-col relative overflow-hidden bg-slate-950 transition-all duration-300 ${
+          currentScreen === 'HOME'
+            ? 'max-w-2xl mx-auto sm:border-x sm:border-amber-500/20 sm:shadow-2xl'
+            : 'w-full'
+        }`}
+      >
         {/* Challenge Alert Toast if friend sent a challenge link */}
         {currentScreen === 'HOME' && challengeData && (
           <div className="absolute top-14 left-4 right-4 z-40 bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 p-3 rounded-2xl shadow-2xl border-2 border-amber-300 text-white flex items-center justify-between font-bengali animate-bounce">
