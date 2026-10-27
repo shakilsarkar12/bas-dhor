@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, HelpCircle, Trophy, Calendar, Volume2, VolumeX, Sparkles, User } from 'lucide-react';
 import { sounds } from '../services/sound';
 import { StorageService } from '../services/storage';
+import { ThreeHeroPreview } from './ThreeHeroPreview';
 
 interface HomeScreenProps {
   onStart: () => void;
@@ -69,16 +70,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* Main Content Area */}
       <div className="w-full max-w-lg flex flex-col items-center my-auto py-4 z-20">
-        {/* Animated Dhaka Hero Banner */}
-        <div className="relative w-full rounded-3xl overflow-hidden border-4 border-amber-500 shadow-2xl mb-4 group transform transition-all">
-          <img
-            src="/dhaka_bus_hero.jpg"
-            alt="ঢাকার রাস্তায় বাস ধরার প্রাণান্তকর দৌড়"
-            className="w-full h-56 sm:h-64 object-cover object-center group-hover:scale-105 transition-transform duration-700"
-          />
+        {/* Animated Real 3D Dhaka Hero Showcase */}
+        <div className="relative w-full h-56 sm:h-64 rounded-3xl overflow-hidden border-4 border-amber-500 shadow-2xl mb-4 group transform transition-all bg-sky-400">
+          <ThreeHeroPreview />
 
           {/* Vignette & Gradient */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent flex flex-col justify-end p-4">
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent flex flex-col justify-between p-4 pointer-events-none">
+            {/* Real 3D Badge */}
+            <div className="self-end bg-slate-900/90 text-amber-300 text-[11px] font-black px-2.5 py-1 rounded-full border border-amber-400/50 shadow-lg flex items-center gap-1 font-bengali">
+              <Sparkles size={12} className="text-yellow-400 animate-spin" /> ৩ডি রিয়েলস্টিক গেম
+            </div>
+
             {/* Dynamic Floating Dialogue Bubble */}
             <div className="self-start bg-white/95 text-slate-900 px-3.5 py-1.5 rounded-2xl rounded-bl-none shadow-xl border-2 border-amber-500 font-bengali font-black text-xs sm:text-sm animate-bounce">
               {bubbles[bubbleIndex]}
